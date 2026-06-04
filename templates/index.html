@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LiveCharts</title>
+<script src="/static/lw-charts.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;500&display=swap');
+:root{
+  --bg:#131722;--s1:#1e222d;--s2:#2a2e39;--border:#2a2e39;
+  --accent:#2962ff;--up:#26a69a;--down:#ef5350;
+  --text:#d1d4dc;--muted:#787b86;
+  --mono:'Space Mono',monospace;--sans:'DM Sans',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;overflow:hidden}
+
+#topbar{height:36px;background:var(--s1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 10px;gap:10px;flex-shrink:0;}
+.logo{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent);letter-spacing:2px;display:flex;align-items:center;gap:5px}
+.dot{width:6px;height:6px;background:var(--up);border-radius:50%;animation:blink 1.4s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.lbtn{background:var(--s2);border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:3px;cursor:pointer}
+.lbtn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+#clock{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--accent)}
+#last-up{font-family:var(--mono);font-size:10px;color:var(--muted)}
+
+#pfstrip{height:28px;background:var(--s1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 10px;gap:16px;overflow-x:auto;flex-shrink:0;}
+.pfi{display:flex;align-items:center;gap:5px;white-space:nowrap;cursor:pointer}
+.pfi:hover .pfsym{color:var(--accent)}
+.pfsym{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--text)}
+.pfpx{font-family:var(--mono);font-size:10px}
+.pfch{font-family:var(--mono);font-size:10px}
+.pfpnl{font-family:var(--mono);font-size:10px;padding:0 4px;border-radius:2px}
+
+#grid{position:absolute;top:64px;left:0;right:0;bottom:20px;display:grid;gap:1px;background:var(--border);}
+.panel{background:var(--bg);display:flex;flex-direction:column;overflow:hidden;position:relative;}
+.phdr{height:30px;background:var(--s1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 8px;gap:6px;flex-shrink:0;}
+select{background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:10px;padding:2px 4px;border-radius:3px;outline:none;cursor:pointer;}
+.tf{background:transparent;border:none;color:var(--muted);font-family:var(--mono);font-size:10px;padding:2px 5px;border-radius:2px;cursor:pointer;}
+.tf.active{background:var(--accent);color:#fff;}
+.phpx{font-family:var(--mono);font-size:11px;margin-left:auto;}
+.phch{font-family:var(--mono);font-size:10px;}
+
+.chart-wrap{flex:1;min-height:0;position:relative;}
+.chart-el{position:absolute;inset:0;}
+.sub{height:55px;flex-shrink:0;border-top:1px solid var(--border);position:relative;}
+.sub-el{position:absolute;inset:0;}
+.sublbl{position:absolute;top:2px;left:5px;font-family:var(--mono);font-size:9px;color:var(--muted);z-index:2;pointer-events:none;}
+
+#sbar{position:absolute;bottom:0;left:0;right:0;height:20px;background:var(--s1);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 10px;gap:16px;}
+.sbi{font-family:var(--mono);font-size:9px;color:var(--muted)}
+.sbi b{color:var(--label)}
+
+.up{color:var(--up)}.down{color:var(--down)}.flat{color:var(--muted)}
+</style>
+</head>
+<body>
+<div id="topbar">
+  <div class="logo"><div class="dot"></div>LiveCharts</div>
+  <button class="lbtn active" onclick="setL(1,this)">1</button>
+  <button class="lbtn" onclick="setL(2,this)">2</button>
+  <button class="lbtn" onclick="setL(4,this)">4</button>
+  <button class="lbtn" onclick="setL(6,this)">6</button>
+  <span id="last-up"></span>
+  <div id="clock"></div>
+</div>
+<div id="pfstrip"></div>
+<div id="grid"></div>
+<div id="sbar">
+  <div class="sbi">Total Value <b id="sv">—</b></div>
+  <div class="sbi">Today P&L <b id="st" class="flat">—</b></div>
+  <div class="sbi">Total P&L <b id="stt" class="flat">—</b></div>
+  <div class="sbi" style="margin-left:auto">Data: yfinance (15min delay outside market hours)</div>
+</div>
+
+<script>
+const SYMS=['SMH','SOXX','MRVL','ARM','ASTS','DELL','SOXL','QCLN'];
+const D4=['SMH','SOXX','MRVL','ARM'];
+const D6=['SMH','SOXX','MRVL','ARM','ASTS','SOXL'];
+const D2=['SMH','SOXX'];
+let layout=+( localStorage.getItem('ly')||'1');
+const C={};
+
+// clock
+setInterval(()=>{
+  const n=new Date(),p=x=>String(x).padStart(2,'0');
+  document.getElementById('clock').textContent=`${p(n.getHours())}:${p(n.getMinutes())}:${p(n.getSeconds())}`;
+},1000);
+
+function setL(n,btn){
+  layout=n; localStorage.setItem('ly',n);
+  document.querySelectorAll('.lbtn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  build();
+}
+
+function build(){
+  const g=document.getElementById('grid');
+  g.innerHTML='';
+  Object.values(C).forEach(c=>{['m','v','r'].forEach(k=>{try{c[k]&&c[k].remove()}catch(e){}})});
+  Object.keys(C).forEach(k=>delete C[k]);
+  const cols=layout===1?1:layout===2?2:layout===6?3:2;
+  const rows=layout===1?1:layout===2?1:layout===6?2:2;
+  g.style.gridTemplateColumns=`repeat(${cols},1fr)`;
+  g.style.gridTemplateRows=`repeat(${rows},1fr)`;
+  const defs=layout===6?D6:layout===4?D4:layout===2?D2:[localStorage.getItem('s0')||'SMH'];
+  for(let i=0;i<layout;i++) mkPanel(i, defs[i]||SYMS[i]);
+  pfPoll();
+  setInterval(pfPoll,30000);
+  setInterval(quotePoll,30000);
+}
+
+function mkPanel(i,sym){
+  const tf=localStorage.getItem(`tf${i}`)||'1d';
+  const g=document.getElementById('grid');
+  const p=document.createElement('div'); p.className='panel'; p.id=`P${i}`;
+
+  // header
+  const h=document.createElement('div'); h.className='phdr';
+  const sel=document.createElement('select'); sel.id=`sel${i}`;
+  sel.onchange=function(){loadChart(i,this.value,localStorage.getItem(`tf${i}`)||'1d');};
+  SYMS.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;if(s===sym)o.selected=true;sel.appendChild(o);});
+  h.appendChild(sel);
+
+  const tfs=['5m','15m','1h','4h','1d'];
+  tfs.forEach(t=>{
+    const b=document.createElement('button'); b.className='tf'+(t===tf?' active':'');
+    b.textContent=t.toUpperCase();
+    b.onclick=function(){
+      document.querySelectorAll(`#P${i} .tf`).forEach(x=>x.classList.remove('active'));
+      this.classList.add('active');
+      loadChart(i,document.getElementById(`sel${i}`).value,t);
+    };
+    h.appendChild(b);
+  });
+
+  const px=document.createElement('span'); px.className='phpx flat'; px.id=`px${i}`; px.textContent='—';
+  const ch=document.createElement('span'); ch.className='phch flat'; ch.id=`ch${i}`;
+  h.appendChild(px); h.appendChild(ch);
+  p.appendChild(h);
+
+  // main chart
+  const cw=document.createElement('div'); cw.className='chart-wrap';
+  const ce=document.createElement('div'); ce.className='chart-el'; ce.id=`ce${i}`;
+  cw.appendChild(ce); p.appendChild(cw);
+
+  // vol sub
+  const vs=document.createElement('div'); vs.className='sub';
+  vs.innerHTML='<div class="sublbl">VOL</div>';
+  const ve=document.createElement('div'); ve.className='sub-el'; ve.id=`ve${i}`;
+  vs.appendChild(ve); p.appendChild(vs);
+
+  // rsi sub
+  const rs=document.createElement('div'); rs.className='sub';
+  rs.innerHTML='<div class="sublbl">RSI(14)</div>';
+  const re=document.createElement('div'); re.className='sub-el'; re.id=`re${i}`;
+  rs.appendChild(re); p.appendChild(rs);
+
+  g.appendChild(p);
+  loadChart(i, sym, tf);
+}
+
+function mkChart(elId, opts){
+  const el=document.getElementById(elId);
+  if(!el||el.clientWidth===0) return null;
+  return LightweightCharts.createChart(el, {
+    layout:{background:{type:'solid',color:'#131722'},textColor:'#787b86'},
+    grid:{vertLines:{color:'#1e222d'},horzLines:{color:'#1e222d'}},
+    crosshair:{mode:LightweightCharts.CrosshairMode.Normal},
+    rightPriceScale:{borderColor:'#2a2e39'},
+    timeScale:{borderColor:'#2a2e39',timeVisible:true,secondsVisible:false,...(opts||{})},
+  });
+}
+
+async function loadChart(i, sym, tf){
+  localStorage.setItem(`s${i}`, sym);
+  localStorage.setItem(`tf${i}`, tf);
+
+  // destroy old
+  if(C[i]){['m','v','r'].forEach(k=>{try{C[i][k]&&C[i][k].remove()}catch(e){}});delete C[i];}
+
+  // show loading text in header
+  const pxEl=document.getElementById(`px${i}`);
+  const chEl=document.getElementById(`ch${i}`);
+  if(pxEl) pxEl.textContent='Loading…';
+  if(chEl) chEl.textContent='';
+
+  try{
+    const res=await fetch(`/api/history/${sym}?tf=${tf}`);
+    const bars=await res.json();
+    if(!bars||bars.error||bars.length===0) throw new Error('no data');
+
+    const closes=bars.map(b=>b.close);
+    const times=bars.map(b=>b.time);
+
+    // wait for DOM to be ready
+    await new Promise(r=>setTimeout(r,50));
+
+    const mChart=mkChart(`ce${i}`);
+    if(!mChart) throw new Error('chart el not ready');
+
+    const candle=mChart.addCandlestickSeries({
+      upColor:'#26a69a',downColor:'#ef5350',
+      borderUpColor:'#26a69a',borderDownColor:'#ef5350',
+      wickUpColor:'#26a69a',wickDownColor:'#ef5350',
+    });
+    candle.setData(bars.map(b=>({time:b.time,open:b.open,high:b.high,low:b.low,close:b.close})));
+
+    // BB
+    const bb=calcBB(closes);
+    const bbu=mChart.addLineSeries({color:'rgba(41,98,255,.5)',lineWidth:1,priceLineVisible:false,lastValueVisible:false});
+    const bbl=mChart.addLineSeries({color:'rgba(41,98,255,.5)',lineWidth:1,priceLineVisible:false,lastValueVisible:false});
+    const bbm=mChart.addLineSeries({color:'rgba(41,98,255,.3)',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false});
+    bbu.setData(bb.map((d,j)=>d.u!=null?{time:times[j],value:d.u}:null).filter(Boolean));
+    bbl.setData(bb.map((d,j)=>d.l!=null?{time:times[j],value:d.l}:null).filter(Boolean));
+    bbm.setData(sma(closes,20).map((v,j)=>v!=null?{time:times[j],value:v}:null).filter(Boolean));
+
+    // EMA
+    [[20,'#f7c948'],[50,'#ff6b35'],[200,'rgba(255,255,255,.2)']].forEach(([p,c])=>{
+      const s=mChart.addLineSeries({color:c,lineWidth:1,priceLineVisible:false,lastValueVisible:false});
+      s.setData(ema(closes,p).map((v,j)=>v!=null?{time:times[j],value:v}:null).filter(Boolean));
+    });
+
+    // VWAP
+    const vw=vwap(bars);
+    const vws=mChart.addLineSeries({color:'#ff9800',lineWidth:1,lineStyle:1,priceLineVisible:false,lastValueVisible:false});
+    vws.setData(vw.map((v,j)=>v!=null?{time:times[j],value:v}:null).filter(Boolean));
+
+    // FVG
+    const fvgs=fvg(bars);
+    const lastT=times[times.length-1];
+    fvgs.forEach(f=>{
+      const lc=f.t==='bull'?'rgba(38,166,154,.5)':'rgba(239,83,80,.5)';
+      const a=mChart.addLineSeries({color:lc,lineWidth:1,priceLineVisible:false,lastValueVisible:false});
+      const b2=mChart.addLineSeries({color:lc,lineWidth:1,priceLineVisible:false,lastValueVisible:false});
+      a.setData([{time:f.time,value:f.top},{time:lastT,value:f.top}]);
+      b2.setData([{time:f.time,value:f.bot},{time:lastT,value:f.bot}]);
+    });
+
+    mChart.timeScale().fitContent();
+
+    // sync initial range — wait for chart to fully render then force sync
+    const _doSync = () => {
+      const r = mChart.timeScale().getVisibleLogicalRange();
+      if(r) {
+        try{if(vChart) vChart.timeScale().setVisibleLogicalRange(r)}catch(e){}
+        try{if(rChart) rChart.timeScale().setVisibleLogicalRange(r)}catch(e){}
+      }
+    };
+    setTimeout(_doSync, 200);
+    setTimeout(_doSync, 600);
+    setTimeout(_doSync, 1200);
+
+    // VOL chart
+    const vChart=mkChart(`ve${i}`,{visible:false});
+    if(vChart){
+      const vSeries=vChart.addHistogramSeries({priceFormat:{type:'volume'},priceScaleId:'right',scaleMargins:{top:.1,bottom:0}});
+      vSeries.setData(bars.map(b=>({time:b.time,value:b.volume,color:b.close>=b.open?'rgba(38,166,154,.6)':'rgba(239,83,80,.6)'})));
+      mChart.timeScale().subscribeVisibleLogicalRangeChange(r=>{if(r)try{vChart.timeScale().setVisibleLogicalRange(r)}catch(e){}});
+    }
+
+    // RSI chart
+    let rsiS=null;
+    const rChart=mkChart(`re${i}`,{visible:false});
+    if(rChart){
+      const rSeries=rChart.addLineSeries({color:'#ce93d8',lineWidth:1,priceLineVisible:false,lastValueVisible:true});
+      rsiS=rSeries;
+      const rData=rsi(closes);
+      rSeries.setData(rData.map((v,j)=>v!=null?{time:times[j],value:v}:null).filter(Boolean));
+      const t0=times[0],tN=times[times.length-1];
+      [[70,'rgba(239,83,80,.4)'],[30,'rgba(38,166,154,.4)']].forEach(([val,col])=>{
+        const ls=rChart.addLineSeries({color:col,lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false});
+        ls.setData([{time:t0,value:val},{time:tN,value:val}]);
+      });
+      // bidirectional sync: main ↔ vol ↔ rsi
+      mChart.timeScale().subscribeVisibleLogicalRangeChange(r=>{
+        if(!r)return;
+        try{vChart&&vChart.timeScale().setVisibleLogicalRange(r)}catch(e){}
+        try{rChart.timeScale().setVisibleLogicalRange(r)}catch(e){}
+      });
+      vChart&&vChart.timeScale().subscribeVisibleLogicalRangeChange(r=>{
+        if(!r)return;
+        try{mChart.timeScale().setVisibleLogicalRange(r)}catch(e){}
+        try{rChart.timeScale().setVisibleLogicalRange(r)}catch(e){}
+      });
+      rChart.timeScale().subscribeVisibleLogicalRangeChange(r=>{
+        if(!r)return;
+        try{mChart.timeScale().setVisibleLogicalRange(r)}catch(e){}
+        try{vChart&&vChart.timeScale().setVisibleLogicalRange(r)}catch(e){}
+      });
+    }
+
+    C[i]={m:mChart,v:vChart,r:rChart,candle,rsiS,sym,tf,bars,closes,times};
+
+    // update header
+    const last=bars[bars.length-1], prev=bars[bars.length-2]||bars[0];
+    const chg=((last.close-prev.close)/prev.close*100).toFixed(2);
+    const cls=last.close>=prev.close?'up':'down';
+    if(pxEl){pxEl.textContent=`$${last.close.toFixed(2)}`;pxEl.className=`phpx ${cls}`;}
+    if(chEl){chEl.textContent=`${chg>=0?'+':''}${chg}%`;chEl.className=`phch ${cls}`;}
+
+  } catch(err){
+    console.error('loadChart',sym,tf,err);
+    if(pxEl){pxEl.textContent='Error';pxEl.className='phpx down';}
+    if(chEl) chEl.textContent=err.message;
+  }
+}
+
+async function quotePoll(){
+  for(const [i,c] of Object.entries(C)){
+    if(!c.candle) continue;
+    try{
+      const r=await fetch(`/api/quote/${c.sym}`);
+      const d=await r.json();
+      if(d.error) continue;
+
+      // update last candle OHLC
+      const lb=c.bars[c.bars.length-1];
+      const priceChanged = lb.close !== d.price;
+      lb.close=d.price;
+      if(d.price>lb.high) lb.high=d.price;
+      if(d.price<lb.low)  lb.low=d.price;
+      c.candle.update(lb);
+
+      // recalculate RSI and update last point only if price changed
+      if(priceChanged && c.rsiS && c.bars.length > 14){
+        const closes = c.bars.map(b=>b.close);
+        const times  = c.bars.map(b=>b.time);
+        const rsiData = rsi(closes);
+        // update only last RSI value
+        const lastIdx = rsiData.length - 1;
+        if(rsiData[lastIdx] !== null){
+          c.rsiS.update({time: times[lastIdx], value: rsiData[lastIdx]});
+        }
+      }
+
+      // update header
+      const pxEl=document.getElementById(`px${i}`);
+      const chEl=document.getElementById(`ch${i}`);
+      const cls=d.change>=0?'up':'down';
+      if(pxEl){pxEl.textContent=`$${d.price.toFixed(2)}`;pxEl.className=`phpx ${cls}`;}
+      if(chEl){chEl.textContent=`${d.change_pct>=0?'+':''}${d.change_pct}%`;chEl.className=`phch ${cls}`;}
+    }catch(e){}
+  }
+  document.getElementById('last-up').textContent='Updated: '+new Date().toLocaleTimeString();
+}
+
+async function pfPoll(){
+  try{
+    const r=await fetch('/api/portfolio');
+    const d=await r.json();
+    const strip=document.getElementById('pfstrip');
+    strip.innerHTML='';
+    d.holdings.forEach(h=>{
+      const cls=h.change_pct>=0?'up':'down';
+      const sign=h.today_pnl>=0?'+':'-';
+      const div=document.createElement('div'); div.className='pfi';
+      div.innerHTML=`<span class="pfsym">${h.symbol}</span><span class="pfpx ${cls}">$${h.price.toFixed(2)}</span><span class="pfch ${cls}">${h.change_pct>=0?'+':''}${h.change_pct}%</span><span class="pfpnl ${cls}">${sign}$${Math.abs(h.today_pnl).toFixed(0)}</span>`;
+      div.onclick=()=>{const s=document.getElementById(`sel0`);if(s){s.value=h.symbol;loadChart(0,h.symbol,localStorage.getItem('tf0')||'1d');}};
+      strip.appendChild(div);
+    });
+    const sv=document.getElementById('sv'),st=document.getElementById('st'),stt=document.getElementById('stt');
+    if(sv) sv.textContent=`$${d.total_val.toLocaleString('en-US',{minimumFractionDigits:2})}`;
+    if(st){st.textContent=`${d.today_pnl>=0?'+':'-'}$${Math.abs(d.today_pnl).toFixed(2)}`;st.className=d.today_pnl>=0?'up':'down';}
+    if(stt){stt.textContent=`${d.total_pnl>=0?'+':'-'}$${Math.abs(d.total_pnl).toFixed(2)}`;stt.className=d.total_pnl>=0?'up':'down';}
+  }catch(e){console.warn('pfPoll',e);}
+}
+
+// math
+function sma(c,p){return c.map((_,i)=>{if(i<p-1)return null;return c.slice(i-p+1,i+1).reduce((a,b)=>a+b,0)/p;});}
+function ema(c,p){const k=2/(p+1);let prev=null;return c.map((v,i)=>{if(i<p-1)return null;if(i===p-1){prev=c.slice(0,p).reduce((a,b)=>a+b,0)/p;return prev;}prev=v*k+prev*(1-k);return prev;});}
+function calcBB(c,p=20,m=2){const s=sma(c,p);return s.map((mean,i)=>{if(mean==null)return{u:null,l:null};const sl=c.slice(i-p+1,i+1);const sd=Math.sqrt(sl.reduce((a,v)=>a+Math.pow(v-mean,2),0)/p);return{u:mean+m*sd,l:mean-m*sd};});}
+const bb=calcBB; // alias
+function rsi(c,p=14){return c.map((_,i)=>{if(i<p)return null;let g=0,l=0;for(let j=i-p+1;j<=i;j++){const d=c[j]-c[j-1];if(d>=0)g+=d;else l-=d;}const ag=g/p,al=l/p;return al===0?100:100-100/(1+ag/al);});}
+function vwap(bars){let cpv=0,cv=0;return bars.map(b=>{const tp=(b.high+b.low+b.close)/3;cpv+=tp*b.volume;cv+=b.volume;return cv>0?cpv/cv:null;});}
+function fvg(bars){const r=[];for(let i=2;i<bars.length;i++){const a=bars[i-2],b=bars[i];if(a.high<b.low)r.push({t:'bull',top:b.low,bot:a.high,time:bars[i-1].time});if(a.low>b.high)r.push({t:'bear',top:a.low,bot:b.high,time:bars[i-1].time});}return r.slice(-8);}
+
+// restore layout buttons
+document.querySelectorAll('.lbtn').forEach(b=>{if(+b.textContent===layout)b.classList.add('active');else b.classList.remove('active');});
+build();
+</script>
+</body>
+</html>
