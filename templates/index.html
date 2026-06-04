@@ -78,6 +78,26 @@ select{background:var(--s2);border:1px solid var(--border);color:var(--text);fon
 const SYMS=['SMH','SOXX','MRVL','ARM','ASTS','DELL','SOXL','QCLN'];
 const D4=['SMH','SOXX','MRVL','ARM'];
 const D6=['SMH','SOXX','MRVL','ARM','ASTS','SOXL'];
+
+// ══════════════════════════════════════════
+//  DOUBLE BB PRO v5 — SYMBOL PRESETS
+// ══════════════════════════════════════════
+const BB_PRESETS = {
+  // Format: { bb1Len, bb1Mult, bb2Len, bb2Mult, adxThr, volMult, rsiBull, rsiBear, atrMult, bodyRatio, rsiExtHi, rsiExtLo, trendBoost, exhBoost, extMaLen, extMaxPct, fcProjBars, emZoneMult }
+  'SMH':  { bb1Len:4,  bb1Mult:4.0, bb2Len:20, bb2Mult:2.0, adxThr:20, volMult:1.5, rsiBull:35, rsiBear:65, atrMult:1.2, bodyRatio:0.30, rsiExtHi:72, rsiExtLo:28, trendBoost:1.5, exhBoost:2.0, extMaLen:200, extMaxPct:30, fcProjBars:15, emZoneMult:1.5, label:'Semi ETF — Standard' },
+  'SOXX': { bb1Len:4,  bb1Mult:4.0, bb2Len:20, bb2Mult:2.0, adxThr:20, volMult:1.5, rsiBull:35, rsiBear:65, atrMult:1.2, bodyRatio:0.30, rsiExtHi:72, rsiExtLo:28, trendBoost:1.5, exhBoost:2.0, extMaLen:200, extMaxPct:30, fcProjBars:15, emZoneMult:1.5, label:'Semi ETF — Standard' },
+  'SOXL': { bb1Len:3,  bb1Mult:5.0, bb2Len:15, bb2Mult:2.5, adxThr:25, volMult:1.3, rsiBull:40, rsiBear:60, atrMult:1.0, bodyRatio:0.25, rsiExtHi:75, rsiExtLo:25, trendBoost:1.3, exhBoost:2.5, extMaLen:100, extMaxPct:50, fcProjBars:10, emZoneMult:2.0, label:'3× Leveraged — Wide Band' },
+  'MRVL': { bb1Len:5,  bb1Mult:3.5, bb2Len:20, bb2Mult:2.0, adxThr:18, volMult:1.8, rsiBull:35, rsiBear:65, atrMult:1.2, bodyRatio:0.30, rsiExtHi:70, rsiExtLo:30, trendBoost:1.6, exhBoost:1.8, extMaLen:150, extMaxPct:35, fcProjBars:15, emZoneMult:1.5, label:'Semi Stock — Earnings-Driven' },
+  'ARM':  { bb1Len:5,  bb1Mult:4.0, bb2Len:20, bb2Mult:2.0, adxThr:18, volMult:2.0, rsiBull:35, rsiBear:65, atrMult:1.3, bodyRatio:0.35, rsiExtHi:70, rsiExtLo:30, trendBoost:1.7, exhBoost:1.8, extMaLen:150, extMaxPct:40, fcProjBars:15, emZoneMult:1.5, label:'Growth Semi — High Confirm' },
+  'ASTS': { bb1Len:6,  bb1Mult:4.5, bb2Len:14, bb2Mult:2.5, adxThr:15, volMult:1.5, rsiBull:40, rsiBear:60, atrMult:1.0, bodyRatio:0.25, rsiExtHi:78, rsiExtLo:22, trendBoost:1.4, exhBoost:2.5, extMaLen:100, extMaxPct:60, fcProjBars:12, emZoneMult:2.0, label:'High Beta — Wide RSI Extreme' },
+  'DELL': { bb1Len:4,  bb1Mult:4.0, bb2Len:20, bb2Mult:2.0, adxThr:20, volMult:1.5, rsiBull:35, rsiBear:65, atrMult:1.2, bodyRatio:0.30, rsiExtHi:72, rsiExtLo:28, trendBoost:1.5, exhBoost:2.0, extMaLen:200, extMaxPct:30, fcProjBars:15, emZoneMult:1.5, label:'Large Cap — Standard' },
+  'QCLN': { bb1Len:4,  bb1Mult:4.0, bb2Len:20, bb2Mult:2.0, adxThr:20, volMult:1.5, rsiBull:35, rsiBear:65, atrMult:1.2, bodyRatio:0.30, rsiExtHi:72, rsiExtLo:28, trendBoost:1.5, exhBoost:2.0, extMaLen:200, extMaxPct:25, fcProjBars:15, emZoneMult:1.5, label:'Clean Energy ETF — Standard' },
+};
+const BB_DEFAULT = BB_PRESETS['SMH']; // fallback
+
+function getPreset(sym) {
+  return BB_PRESETS[sym.toUpperCase()] || BB_DEFAULT;
+}
 const D2=['SMH','SOXX'];
 let layout=+( localStorage.getItem('ly')||'1');
 const C={};
@@ -207,14 +227,24 @@ async function loadChart(i, sym, tf){
     });
     candle.setData(bars.map(b=>({time:b.time,open:b.open,high:b.high,low:b.low,close:b.close})));
 
-    // BB
-    const bb=calcBB(closes);
+    // ── Double BB Pro — Auto Preset by Symbol ──
+    const pr = getPreset(sym);
+
+    // BB1 Fast Band (red) — preset bb1Len / bb1Mult
+    const bb1=calcBB(closes,pr.bb1Len,pr.bb1Mult);
+    const bb1u=mChart.addLineSeries({color:'rgba(255,80,80,.55)',lineWidth:1,priceLineVisible:false,lastValueVisible:false});
+    const bb1l=mChart.addLineSeries({color:'rgba(255,80,80,.55)',lineWidth:1,priceLineVisible:false,lastValueVisible:false});
+    bb1u.setData(bb1.map((d,j)=>d.u!=null?{time:times[j],value:d.u}:null).filter(Boolean));
+    bb1l.setData(bb1.map((d,j)=>d.l!=null?{time:times[j],value:d.l}:null).filter(Boolean));
+
+    // BB2 Standard Band (blue) — preset bb2Len / bb2Mult
+    const bb=calcBB(closes,pr.bb2Len,pr.bb2Mult);
     const bbu=mChart.addLineSeries({color:'rgba(41,98,255,.5)',lineWidth:1,priceLineVisible:false,lastValueVisible:false});
     const bbl=mChart.addLineSeries({color:'rgba(41,98,255,.5)',lineWidth:1,priceLineVisible:false,lastValueVisible:false});
     const bbm=mChart.addLineSeries({color:'rgba(41,98,255,.3)',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false});
     bbu.setData(bb.map((d,j)=>d.u!=null?{time:times[j],value:d.u}:null).filter(Boolean));
     bbl.setData(bb.map((d,j)=>d.l!=null?{time:times[j],value:d.l}:null).filter(Boolean));
-    bbm.setData(sma(closes,20).map((v,j)=>v!=null?{time:times[j],value:v}:null).filter(Boolean));
+    bbm.setData(sma(closes,pr.bb2Len).map((v,j)=>v!=null?{time:times[j],value:v}:null).filter(Boolean));
 
     // EMA
     [[20,'#f7c948'],[50,'#ff6b35'],[200,'rgba(255,255,255,.2)']].forEach(([p,c])=>{
@@ -269,7 +299,9 @@ async function loadChart(i, sym, tf){
       const rData=rsi(closes);
       rSeries.setData(rData.map((v,j)=>v!=null?{time:times[j],value:v}:null).filter(Boolean));
       const t0=times[0],tN=times[times.length-1];
-      [[70,'rgba(239,83,80,.4)'],[30,'rgba(38,166,154,.4)']].forEach(([val,col])=>{
+      const obLevel = (typeof pr !== 'undefined') ? pr.rsiBear : 70;
+      const osLevel = (typeof pr !== 'undefined') ? pr.rsiBull : 30;
+      [[obLevel,'rgba(239,83,80,.4)'],[osLevel,'rgba(38,166,154,.4)']].forEach(([val,col])=>{
         const ls=rChart.addLineSeries({color:col,lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false});
         ls.setData([{time:t0,value:val},{time:tN,value:val}]);
       });
@@ -293,12 +325,23 @@ async function loadChart(i, sym, tf){
 
     C[i]={m:mChart,v:vChart,r:rChart,candle,rsiS,sym,tf,bars,closes,times};
 
-    // update header
+    // update header + show preset badge
     const last=bars[bars.length-1], prev=bars[bars.length-2]||bars[0];
     const chg=((last.close-prev.close)/prev.close*100).toFixed(2);
     const cls=last.close>=prev.close?'up':'down';
     if(pxEl){pxEl.textContent=`$${last.close.toFixed(2)}`;pxEl.className=`phpx ${cls}`;}
     if(chEl){chEl.textContent=`${chg>=0?'+':''}${chg}%`;chEl.className=`phch ${cls}`;}
+    // preset badge
+    const badgeId=`preset-${i}`;
+    let badgeEl=document.getElementById(badgeId);
+    if(!badgeEl){
+      badgeEl=document.createElement('span');
+      badgeEl.id=badgeId;
+      badgeEl.style.cssText='font-size:9px;color:rgba(0,212,170,.8);margin-left:4px;font-family:var(--mono);white-space:nowrap;overflow:hidden;max-width:120px;';
+      const hdr=document.querySelector(`#P${i} .phdr`);
+      if(hdr) hdr.appendChild(badgeEl);
+    }
+    badgeEl.textContent=pr.label||''
 
   } catch(err){
     console.error('loadChart',sym,tf,err);
