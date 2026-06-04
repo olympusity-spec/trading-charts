@@ -28,7 +28,6 @@ TF_MAP = {
 def index():
     return render_template('index.html')
 
-# serve static files from templates folder (for lw-charts.js)
 @app.route('/static/<path:filename>')
 def static_files(filename):
     return send_from_directory(
@@ -39,21 +38,37 @@ def history(symbol):
     try:
         tf  = request.args.get('tf', '1d')
         cfg = TF_MAP.get(tf, TF_MAP['1d'])
-        df  = yf.Ticker(symbol).history(
-                  period=cfg['period'],
-                  interval=cfg['interval'])
-        if df.empty:
+        # retry up to 3 times
+        df = None
+        for attempt in range(3):
+            try:
+                ticker = yf.Ticker(symbol)
+                df = ticker.history(
+                    period=cfg['period'],
+                    interval=cfg['interval'])
+                if not df.empty:
+                    break
+            except Exception:
+                if attempt == 2:
+                    raise
+                continue
+
+        if df is None or df.empty:
             return jsonify({'error': 'no data'}), 404
+
         bars = []
         for ts, row in df.iterrows():
-            bars.append({
-                'time':   int(ts.timestamp()),
-                'open':   round(float(row['Open']),  4),
-                'high':   round(float(row['High']),  4),
-                'low':    round(float(row['Low']),   4),
-                'close':  round(float(row['Close']), 4),
-                'volume': int(row['Volume']),
-            })
+            try:
+                bars.append({
+                    'time':   int(ts.timestamp()),
+                    'open':   round(float(row['Open']),  4),
+                    'high':   round(float(row['High']),  4),
+                    'low':    round(float(row['Low']),   4),
+                    'close':  round(float(row['Close']), 4),
+                    'volume': int(row['Volume']),
+                })
+            except Exception:
+                continue
         return jsonify(bars)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -131,4 +146,5 @@ def portfolio():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
