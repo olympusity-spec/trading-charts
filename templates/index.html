@@ -37,6 +37,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .panel{background:var(--bg);display:flex;flex-direction:column;overflow:hidden;position:relative;}
 .phdr{height:30px;background:var(--s1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 8px;gap:6px;flex-shrink:0;}
 select{background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:10px;padding:2px 4px;border-radius:3px;outline:none;cursor:pointer;}
+input.symin{background:var(--s2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:10px;padding:2px 4px;border-radius:3px;outline:none;width:56px;text-transform:uppercase;}
+input.symin:focus{border-color:#2962ff;}
 .tf{background:transparent;border:none;color:var(--muted);font-family:var(--mono);font-size:10px;padding:2px 5px;border-radius:2px;cursor:pointer;}
 .tf.active{background:var(--accent);color:#fff;}
 .phpx{font-family:var(--mono);font-size:11px;margin-left:auto;}
@@ -124,8 +126,10 @@ function build(){
   const rows=layout===1?1:layout===2?1:layout===6?2:2;
   g.style.gridTemplateColumns=`repeat(${cols},1fr)`;
   g.style.gridTemplateRows=`repeat(${rows},1fr)`;
-  const defs=layout===6?D6:layout===4?D4:layout===2?D2:[localStorage.getItem('s0')||'SMH'];
-  for(let i=0;i<layout;i++) mkPanel(i, defs[i]||SYMS[i]);
+  const base=layout===6?D6:layout===4?D4:layout===2?D2:['SMH'];
+  const defs=[];
+  for(let i=0;i<layout;i++) defs[i]=localStorage.getItem(`s${i}`)||base[i]||SYMS[i];
+  for(let i=0;i<layout;i++) mkPanel(i, defs[i]);
   pfPoll();
   setInterval(pfPoll,30000);
   setInterval(quotePoll,30000);
@@ -138,9 +142,27 @@ function mkPanel(i,sym){
 
   // header
   const h=document.createElement('div'); h.className='phdr';
-  const sel=document.createElement('select'); sel.id=`sel${i}`;
-  sel.onchange=function(){loadChart(i,this.value,localStorage.getItem(`tf${i}`)||'1d');};
-  SYMS.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;if(s===sym)o.selected=true;sel.appendChild(o);});
+  const sel=document.createElement('input'); sel.id=`sel${i}`; sel.className='symin';
+  sel.setAttribute('list','symList'); sel.autocomplete='off'; sel.spellcheck=false;
+  sel.value=sym; sel.dataset.last=sym;
+  sel.title='พิมพ์ ticker ใดก็ได้ แล้วกด Enter';
+  const commit=function(){
+    const v=sel.value.trim().toUpperCase();
+    if(!v){ sel.value=sel.dataset.last||''; return; }
+    sel.value=v;
+    if(sel.dataset.last===v) return;
+    sel.dataset.last=v;
+    loadChart(i,v,localStorage.getItem(`tf${i}`)||'1d');
+  };
+  sel.onchange=commit;
+  sel.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); sel.blur(); commit(); } });
+  if(!document.getElementById('symList')){
+    const dl=document.createElement('datalist'); dl.id='symList';
+    SYMS.concat(['AMAT','ALAB','SPY','NVDA','TSM','AVGO','QCOM','DELL']).forEach(function(s){
+      const o=document.createElement('option'); o.value=s; dl.appendChild(o);
+    });
+    document.body.appendChild(dl);
+  }
   h.appendChild(sel);
 
   const tfs=['5m','15m','1h','4h','1d'];
@@ -400,7 +422,7 @@ async function pfPoll(){
       const sign=h.today_pnl>=0?'+':'-';
       const div=document.createElement('div'); div.className='pfi';
       div.innerHTML=`<span class="pfsym">${h.symbol}</span><span class="pfpx ${cls}">$${h.price.toFixed(2)}</span><span class="pfch ${cls}">${h.change_pct>=0?'+':''}${h.change_pct}%</span><span class="pfpnl ${cls}">${sign}$${Math.abs(h.today_pnl).toFixed(0)}</span>`;
-      div.onclick=()=>{const s=document.getElementById(`sel0`);if(s){s.value=h.symbol;loadChart(0,h.symbol,localStorage.getItem('tf0')||'1d');}};
+      div.onclick=()=>{const s=document.getElementById(`sel0`);if(s){s.value=h.symbol;s.dataset.last=h.symbol;}loadChart(0,h.symbol,localStorage.getItem('tf0')||'1d');};
       strip.appendChild(div);
     });
     const sv=document.getElementById('sv'),st=document.getElementById('st'),stt=document.getElementById('stt');
